@@ -1,3 +1,13 @@
+---
+title: HireMind AI Simulator
+emoji: 🧠
+colorFrom: green
+colorTo: blue
+sdk: gradio
+app_file: app.py
+pinned: false
+---
+
 # 🧠 HireMind AI Interview Simulator
 
 HireMind is an advanced, fully-autonomous AI Interview Simulator designed to mimic a real technical interview. It uses LLMs to parse your resume, dynamically generate technical, aptitude, and communication questions, evaluate your responses, and generate actionable feedback and learning resources.

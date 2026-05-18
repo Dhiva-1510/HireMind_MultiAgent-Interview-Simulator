@@ -3,10 +3,12 @@ groq
 chromadb
 python-dotenv
 pydantic
-elevenlabs
 llama-index
 llama-index-core
 llama-index-readers-file
 python-multipart
 docx2txt
 pypdf
+edge-tts
+twilio
+requests
