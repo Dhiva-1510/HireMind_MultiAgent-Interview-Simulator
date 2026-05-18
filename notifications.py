@@ -29,6 +29,11 @@ def send_twilio_sms(to_number, message_body):
 
         to_number = str(to_number).strip()
 
+        # If using WhatsApp sandbox, ensure both numbers have whatsapp: prefix
+        if from_number.startswith("whatsapp:"):
+            if not to_number.startswith("whatsapp:"):
+                to_number = f"whatsapp:{to_number}"
+
         # Twilio messages have a 1600-character limit
         if len(message_body) > 1600:
             message_body = message_body[:1597] + "..."
