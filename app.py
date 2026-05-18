@@ -10,8 +10,9 @@ from agents import HireMindAgents
 from voice import transcribe_audio, generate_tts
 from resources import fetch_resources_for_weakness
 from notifications import send_twilio_sms
-
-from notifications import send_twilio_sms
+from twilio_bot import handle_incoming_sms, build_twiml_response
+from fastapi import Request
+from fastapi.responses import Response
 
 session_agents = {}
 
@@ -118,12 +119,28 @@ def chat_logic(user_message, user_audio, history, session_id, current_round):
                 
         # Send Twilio SMS if phone number provided
         if getattr(agent, "phone_number", None):
-            sms_body = f"HireMind Interview Complete!\nScore: {len(resources)} weak areas found.\nReview your feedback and learning resources."
+            # Build a rich but compact SMS summary
+            name = profile.get("name", "Candidate")
+            role = profile.get("target_role", "the role")
+            weak_list = ", ".join(list(all_weak_areas)[:5]) if all_weak_areas else "None identified"
+            total_qs = len(agent.evaluations)
+            avg_score = sum(e.get("overall_score", 0) for e in agent.evaluations) / max(1, total_qs)
+            resource_links = "\n".join([f"- {r['title']}: {r['url']}" for r in resources[:3]]) if resources else "No resources found."
+
+            sms_body = (
+                f"HireMind Interview Complete!\n"
+                f"Candidate: {name}\n"
+                f"Target Role: {role}\n"
+                f"Questions Answered: {total_qs}\n"
+                f"Avg Score: {avg_score:.1f}/10\n"
+                f"Weak Areas: {weak_list}\n\n"
+                f"Top Learning Resources:\n{resource_links}"
+            )
             success, msg = send_twilio_sms(agent.phone_number, sms_body)
             if success:
-                feedback += f"\n\n*(An SMS with a summary has been sent to {agent.phone_number})*"
+                feedback += f"\n\n*(SMS summary sent successfully to {agent.phone_number})*"
             else:
-                feedback += f"\n\n*(Failed to send SMS: {msg})*"
+                feedback += f"\n\n*(SMS not sent: {msg})*"
         
         history[-1]["content"] = "Interview complete! Here is your feedback:\n\n" + feedback
         final_audio = generate_tts("Interview complete. Please review your feedback report.")
@@ -190,4 +207,25 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="green", neutral_hue="slate")
     )
 
 if __name__ == "__main__":
-    app.launch()
+    # Launch Gradio and get the underlying FastAPI app
+    gradio_app, local_url, share_url = app.launch(prevent_thread_lock=True)
+
+    # Mount the Twilio SMS webhook on the same server
+    @gradio_app.post("/twilio/sms")
+    async def twilio_sms_webhook(request: Request):
+        form_data = await request.form()
+        incoming_msg = form_data.get("Body", "")
+        answer = handle_incoming_sms(incoming_msg)
+        twiml = build_twiml_response(answer)
+        return Response(content=twiml, media_type="application/xml")
+
+    print("\nTwilio SMS webhook live at: /twilio/sms")
+    print(f"Full URL: {local_url}twilio/sms")
+    print("Point this URL in your Twilio Console > Phone Numbers > Messaging webhook")
+
+    import time
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("Shutting down...")
