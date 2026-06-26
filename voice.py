@@ -23,7 +23,7 @@ def transcribe_audio(audio_path):
     except Exception as e:
         return f"[Error transcribing audio: {str(e)}]"
 
-def generate_tts(text):
+async def generate_tts(text):
     """
     Generates TTS. Attempts to use canopylabs/orpheus-v1-english if API is provided,
     otherwise falls back to a free high-quality edge-tts.
@@ -52,9 +52,6 @@ def generate_tts(text):
             pass
 
     # Fallback to Edge TTS (Free, high quality)
-    async def _generate():
-        communicate = edge_tts.Communicate(text, "en-US-ChristopherNeural")
-        await communicate.save(temp_path)
-
-    asyncio.run(_generate())
+    communicate = edge_tts.Communicate(text, "en-US-ChristopherNeural")
+    await communicate.save(temp_path)
     return temp_path
