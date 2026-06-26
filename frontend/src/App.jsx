@@ -406,6 +406,7 @@ function App() {
             <div className="landing-hero-container">
               <h1 className="hero-title">Prepare for your next tech role with AI</h1>
               <p className="hero-subtitle">
+                <strong>Hire Mind an autonomous, multi-agent AI interview simulator.</strong><br/>
                 Ingest your resume, practice realistic technical and aptitude interview rounds, and receive detailed feedback with tailored revision resources.
               </p>
               <button 
