@@ -311,3 +311,47 @@ WRITING INSTRUCTIONS:
             return completion.choices[0].message.content
         except Exception as e:
             return f"Dear {profile.get('name', 'Candidate')},\n\nThank you for completing the HireMind interview. Your average score was {avg_score:.1f}/10. Please review your weak areas: {', '.join(unique_weak) or 'none identified'}.\n\nBest of luck in your preparation!\n\nHireMind Interview Team"
+
+def generate_mcq_test(target_role, candidate_domain):
+    system_prompt = f"""You are an expert technical assessor.
+Generate a multiple-choice test for a candidate applying for the role of '{target_role}' in the '{candidate_domain}' domain.
+The test must contain exactly 5 questions of varying difficulty (easy, medium, hard).
+Calculate a fair total time limit for the test based on the difficulty (e.g. 30s for easy, 60s for medium, 90s for hard) and return the total sum in seconds as 'time_limit_seconds'.
+
+Return ONLY a valid JSON object matching this schema:
+{{
+    "time_limit_seconds": 300,
+    "questions": [
+        {{
+            "id": 1,
+            "question": "What is ...?",
+            "options": ["A", "B", "C", "D"],
+            "correct_answer": "B",
+            "explanation": "Because ...",
+            "difficulty": "medium"
+        }}
+    ]
+}}
+"""
+    try:
+        completion = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "system", "content": system_prompt}],
+            temperature=0.7,
+            response_format={"type": "json_object"}
+        )
+        return json.loads(completion.choices[0].message.content)
+    except Exception as e:
+        return {
+            "time_limit_seconds": 120,
+            "questions": [
+                {
+                    "id": 1,
+                    "question": "Fallback: What is 2+2?",
+                    "options": ["3", "4", "5", "6"],
+                    "correct_answer": "4",
+                    "explanation": "Basic math fallback.",
+                    "difficulty": "easy"
+                }
+            ]
+        }

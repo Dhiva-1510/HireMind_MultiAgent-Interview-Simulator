@@ -31,9 +31,17 @@ function App() {
   const [sessions, setSessions] = useState([]);
   const [expandedSession, setExpandedSession] = useState(null);
 
+  // Test Feature State
+  const [testData, setTestData] = useState(null);
+  const [currentTestQuestion, setCurrentTestQuestion] = useState(0);
+  const [testAnswers, setTestAnswers] = useState({});
+  const [testTimeLeft, setTestTimeLeft] = useState(0);
+  const [isTestGenerating, setIsTestGenerating] = useState(false);
+  const [testScore, setTestScore] = useState(null);
+  const [testWarning, setTestWarning] = useState('');
+
   // Setup Form State
   const [resumeFile, setResumeFile] = useState(null);
-  const [phoneNumber, setPhoneNumber] = useState('');
   const [aptQ, setAptQ] = useState(1);
   const [techQ, setTechQ] = useState(1);
   const [commQ, setCommQ] = useState(1);
@@ -111,6 +119,91 @@ function App() {
     }
     return () => clearInterval(statusPollRef.current);
   }, [isSubmittingAnswer, sessionId]);
+
+  // --- Test Feature Logic ---
+  const startTestGeneration = async () => {
+    setIsTestGenerating(true);
+    setTestWarning('');
+    
+    const formData = new FormData();
+    formData.append('email', user ? user.email : 'anonymous');
+    formData.append('target_role', targetRole);
+    formData.append('candidate_domain', candidateDomain);
+
+    try {
+      const response = await fetch(`${API_BASE}/api/test/generate`, {
+        method: 'POST',
+        body: formData
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setTestData(data);
+        setTestTimeLeft(data.time_limit_seconds);
+        setCurrentTestQuestion(0);
+        setTestAnswers({});
+        setTestScore(null);
+        setCurrentPage('taking_test');
+        
+        // Enter Fullscreen
+        if (document.documentElement.requestFullscreen) {
+          document.documentElement.requestFullscreen().catch(err => {
+            console.log("Error attempting to enable fullscreen:", err);
+          });
+        }
+      }
+    } catch (e) {
+      alert("Failed to generate test.");
+    } finally {
+      setIsTestGenerating(false);
+    }
+  };
+
+  const submitTest = (forced = false) => {
+    let score = 0;
+    if (testData && testData.questions) {
+      testData.questions.forEach((q, idx) => {
+        if (testAnswers[idx] === q.correct_answer) score++;
+      });
+      setTestScore(Math.round((score / testData.questions.length) * 100));
+    }
+    setCurrentPage('test_results');
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(()=>{});
+    }
+  };
+
+  useEffect(() => {
+    let timer;
+    if (currentPage === 'taking_test' && testTimeLeft > 0) {
+      timer = setInterval(() => setTestTimeLeft(prev => prev - 1), 1000);
+    } else if (currentPage === 'taking_test' && testTimeLeft <= 0) {
+      submitTest(true);
+    }
+    return () => clearInterval(timer);
+  }, [currentPage, testTimeLeft]);
+
+  // Anti-cheat: Visibility change
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (currentPage === 'taking_test' && document.hidden) {
+        alert("Tab switched! Submitting test automatically for violation.");
+        submitTest(true);
+      }
+    };
+    const handleFullscreenChange = () => {
+      if (currentPage === 'taking_test' && !document.fullscreenElement) {
+        alert("Exited full screen! Submitting test automatically for violation.");
+        submitTest(true);
+      }
+    };
+    
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    };
+  }, [currentPage, testData, testAnswers]);
 
   const loadDashboard = async () => {
     try {
@@ -214,7 +307,6 @@ function App() {
 
     const formData = new FormData();
     if (resumeFile) formData.append('resume', resumeFile);
-    formData.append('phone_number', phoneNumber);
     formData.append('apt_q', aptQ);
     formData.append('tech_q', techQ);
     formData.append('comm_q', commQ);
@@ -539,9 +631,14 @@ function App() {
                   Welcome back, {user ? user.name : 'Candidate'}!
                 </p>
               </div>
-              <button className="btn btn-primary" onClick={() => setCurrentPage('interview')}>
-                Start New Interview
-              </button>
+              <div>
+                <button className="btn btn-secondary" onClick={() => setCurrentPage('test_setup')} style={{ marginRight: '10px' }}>
+                  Take Automated Test
+                </button>
+                <button className="btn btn-primary" onClick={() => setCurrentPage('interview')}>
+                  Start New Interview
+                </button>
+              </div>
             </div>
 
             <h2 className="session-history-title">Here is your interview performance history:</h2>
@@ -604,6 +701,126 @@ function App() {
           </div>
         )}
 
+        {/* Test Setup Page */}
+        {currentPage === 'test_setup' && (
+          <div className="glass-card" style={{ maxWidth: '600px', margin: '40px auto' }}>
+            <h2>Automated AI Test</h2>
+            <p style={{ color: 'var(--text-muted)' }}>Generate a rapid 5-question automated test based on your profile.</p>
+            
+            <div className="form-group" style={{ marginTop: '20px' }}>
+              <label>Target Job Role</label>
+              <input type="text" className="form-control" value={targetRole} onChange={(e) => setTargetRole(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label>Domain</label>
+              <select className="form-control" value={candidateDomain} onChange={(e) => setCandidateDomain(e.target.value)} style={{ background: 'var(--panel-bg)', color: 'var(--text-color)', border: '1px solid var(--border-color)', borderRadius: '6px', height: '38px', padding: '0 8px', width: '100%' }}>
+                <option value="Tech">Tech / Engineering</option>
+                <option value="Business">Business / Management</option>
+                <option value="Finance">Finance / Banking</option>
+                <option value="Marketing">Marketing / Sales</option>
+                <option value="Creative">Creative / Design</option>
+                <option value="Healthcare">Healthcare / Biotech</option>
+              </select>
+            </div>
+            
+            <button className="btn btn-primary" style={{ width: '100%', marginTop: '20px' }} onClick={startTestGeneration} disabled={isTestGenerating}>
+              {isTestGenerating ? 'Generating Test...' : 'Start Assessment (Full Screen)'}
+            </button>
+            <p style={{ fontSize: '0.8rem', color: 'var(--danger-color)', marginTop: '10px' }}>
+              Warning: The test will enforce full screen mode. Switching tabs or exiting full screen will auto-submit your test!
+            </p>
+          </div>
+        )}
+
+        {/* Taking Test Page */}
+        {currentPage === 'taking_test' && testData && (
+          <div className="glass-card" style={{ maxWidth: '800px', margin: '40px auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h2>Question {currentTestQuestion + 1} of {testData.questions.length}</h2>
+              <div style={{ color: testTimeLeft < 30 ? 'var(--danger-color)' : 'var(--primary-color)', fontWeight: 'bold', fontSize: '1.2rem' }}>
+                Time Left: {Math.floor(testTimeLeft / 60)}:{(testTimeLeft % 60).toString().padStart(2, '0')}
+              </div>
+            </div>
+
+            <div style={{ background: 'var(--panel-bg)', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
+              <h3>{testData.questions[currentTestQuestion].question}</h3>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {testData.questions[currentTestQuestion].options.map((opt, i) => (
+                <button 
+                  key={i} 
+                  className={`btn ${testAnswers[currentTestQuestion] === opt ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ textAlign: 'left', padding: '15px' }}
+                  onClick={() => setTestAnswers({...testAnswers, [currentTestQuestion]: opt})}
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '30px' }}>
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => setCurrentTestQuestion(prev => Math.max(0, prev - 1))}
+                disabled={currentTestQuestion === 0}
+              >
+                Previous
+              </button>
+              {currentTestQuestion === testData.questions.length - 1 ? (
+                <button className="btn btn-primary" onClick={() => submitTest(false)}>
+                  End & Submit Test
+                </button>
+              ) : (
+                <button className="btn btn-primary" onClick={() => setCurrentTestQuestion(prev => Math.min(testData.questions.length - 1, prev + 1))}>
+                  Next
+                </button>
+              )}
+            </div>
+            <button className="btn btn-danger btn-sm" style={{ marginTop: '30px', width: '100%' }} onClick={() => submitTest(true)}>Emergency End Test</button>
+          </div>
+        )}
+
+        {/* Test Results Page */}
+        {currentPage === 'test_results' && (
+          <div className="glass-card" style={{ maxWidth: '800px', margin: '40px auto' }}>
+            <h2 style={{ textAlign: 'center' }}>Test Complete</h2>
+            <div style={{ textAlign: 'center', margin: '30px 0' }}>
+              <h1 style={{ color: testScore >= 75 ? 'var(--primary-color)' : 'var(--danger-color)', fontSize: '3rem' }}>
+                {testScore}%
+              </h1>
+              <h3>{testScore >= 75 ? 'PASSED 🎉' : 'FAILED ❌'}</h3>
+              <p style={{ color: 'var(--text-muted)' }}>You needed 75% to pass.</p>
+            </div>
+
+            <h3 style={{ marginBottom: '15px' }}>Feedback & Review:</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              {testData?.questions.map((q, idx) => {
+                const userAns = testAnswers[idx];
+                const isCorrect = userAns === q.correct_answer;
+                return (
+                  <div key={idx} style={{ background: 'var(--panel-bg)', padding: '15px', borderRadius: '8px', borderLeft: `4px solid ${isCorrect ? 'var(--primary-color)' : 'var(--danger-color)'}` }}>
+                    <p><strong>Q:</strong> {q.question}</p>
+                    <p style={{ color: isCorrect ? 'var(--primary-color)' : 'var(--danger-color)' }}>
+                      <strong>Your Answer:</strong> {userAns || 'Not Answered'}
+                    </p>
+                    {!isCorrect && (
+                      <p style={{ color: 'var(--primary-color)' }}><strong>Correct Answer:</strong> {q.correct_answer}</p>
+                    )}
+                    <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginTop: '8px' }}>
+                      <em>Explanation:</em> {q.explanation}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+
+            <button className="btn btn-primary" style={{ width: '100%', marginTop: '30px' }} onClick={() => setCurrentPage('dashboard')}>
+              Return to Dashboard
+            </button>
+          </div>
+        )}
+
         {/* Live Interview Page */}
         {currentPage === 'interview' && (
           <div className="interview-split-container">
@@ -630,17 +847,6 @@ function App() {
                 ) : (
                   <p>Click or drag to upload Resume (PDF/DOCX)</p>
                 )}
-              </div>
-
-              <div className="form-group">
-                <label>Phone Number for SMS (Optional)</label>
-                <input 
-                  type="text" 
-                  className="form-control" 
-                  placeholder="+1234567890"
-                  value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
-                />
               </div>
 
               <div className="form-group-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '10px', marginBottom: '10px' }}>

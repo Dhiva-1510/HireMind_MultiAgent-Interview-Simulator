@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 # Core Interview Logic & DB
 from resume_parser import parse_resume, get_profile
-from agents import HireMindAgents
+from agents import HireMindAgents, generate_mcq_test
 from voice import transcribe_audio, generate_tts
 from resources import fetch_resources_for_weakness
 from database import create_user, authenticate_user, save_interview_session, get_user_sessions
@@ -78,6 +78,18 @@ async def api_interview_status(session_id: str):
 async def api_dashboard(email: str):
     sessions = get_user_sessions(email)
     return sessions
+
+@app.post("/api/test/generate")
+async def api_generate_test(
+    email: str = Form("anonymous"),
+    target_role: str = Form("Software Engineer"),
+    candidate_domain: str = Form("Tech")
+):
+    try:
+        test_data = generate_mcq_test(target_role, candidate_domain)
+        return test_data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/interview/start")
 async def api_interview_start(
